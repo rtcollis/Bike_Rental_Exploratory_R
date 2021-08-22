@@ -1,0 +1,570 @@
+---
+title: "Visualising Data in R"
+author: "Robin Collis"
+date: "October 2019"
+output:
+  word_document: default
+  html_document: default
+---
+
+# **Overview**
+
+This Markdown aims to serve as a ggplot cheatsheet for future visualisation tasks. Using the BikeShareData file, the following tasks are to be completed
+
+* Load BikeShareData file, and clean data given there are missing values
+* Create the following charts in ggplot to show categories, trends, distributions, and relationships
+    + Bar chart
+    + Line chart
+    + Stacked area
+    + Histogram
+    + Density plot
+    + Boxplot 
+    + Scatterplot
+* Modify each chart to apply the principles of design. Axis labels, titles, subtitles, and captions must be meaningful (placeholder text was used in the example given). Charts must communicate a key insight that is written in the title
+* Invent your own chart style. Design aesthetics must be your own. Do not use Avenir font or the fill color (#4cbea3) as shown in the video
+* Knit your document to a Word document. The output should include the code and the final visualization for each of the 7 required visuals
+
+# **Load Packages**
+
+```{r Load library, echo=TRUE, message=FALSE, warning=FALSE}
+
+# Creating a vector of packages used within.  
+packages <- c('anytime',
+              'caTools','chron',
+              'DMwR2','doParallel','dplyr',
+              'e1071', 'extrafont',
+              'ggplot2','gridExtra',
+              'here',
+              'janitor',
+              'knitr',
+              'lme4','lubridate',
+              'MASS',
+              'neuralnet', 'nnet',
+              'plyr',
+              'randomForest','readr', 'readxl','rlang','rpart','rpart.plot',
+              'stats',
+              'tidyverse',
+              'scales',
+              'cowplot',
+              'reshape2')
+# Checking for package installations on the system and installing if not found.
+if (length(setdiff(packages, rownames(installed.packages()))) > 0) {
+  install.packages(setdiff(packages, rownames(installed.packages())))  
+}
+# Including the packages for use.
+for(package in packages){
+  library(package, character.only = TRUE)
+}
+#Ensure wd is set to current location by using here()
+setwd(here::here())
+
+```
+
+# **Load and Clean Data**
+
+Data is prvided in csv format and is loaded directly from the working directory
+
+```{r Load BikeShareData, echo=TRUE, include=FALSE}
+
+# Load BikeShareData csv file
+bike_data <- read_csv("bikesharedailydata.csv", col_names = TRUE)
+
+```
+
+The data set has 16 variables across 731 observations. Most of the variablea are numerical in nature, with the date being in character format
+
+```{r Take a look at the data, echo=TRUE, include=TRUE}
+
+# Take a look at the data
+str(bike_data)
+
+summary(bike_data)
+
+```
+
+Observign a header view of the data shows that the data structure; for each day over a two year period the number of riders is captured, with a sub-split provided between casual and registered users. Weather metrics are provided each day for temperature, ambient temerature, humidity and windspeed. Metrics related to the date are also provided covering month, yr, season, weekday and workingday
+
+```{r Data head, echo=TRUE, include=TRUE, fig.width=15, fig.height=7}
+
+# Look at the head of the data
+head(bike_data)
+
+```
+
+Checking for missing values show the mnth metric is missing one value
+
+```{r Check missing values 1, echo=TRUE, include=TRUE}
+
+# Check number of missing values
+sapply(bike_data, function(x) sum(is.na(x)))
+
+```
+
+Correcting the date format of the date columns allows the missing value to be solved for
+
+```{r Solve for missing values, echo=TRUE, include=TRUE}
+
+# Convert datacolumn to correct format with lubridate
+bike_data$dteday <- mdy(bike_data$dteday)
+
+# Fill in missing to correct format 
+bike_data$mnth <- month(bike_data$dteday)
+
+# Check number of missing values
+sapply(bike_data, function(x) sum(is.na(x)))
+
+```
+
+An additional column is added indicating just the month_year of each day to be used in future analysis at a rollup level
+
+```{r Add Month_Year Column, echo=TRUE}
+
+# Add month-year column to the data set
+
+bike_data$year_month <- format(bike_data$dteday, "%b-%y")
+bike_data$year_month <- as.factor(bike_data$year_month)
+bike_data <- as.data.frame(bike_data)
+
+```
+
+In addition a weekday is added in 'weekday' format
+
+```{r Add weekday to dataset, echo=TRUE, include=TRUE}
+
+bike_data$weekday <- strftime(bike_data$dteday, "%A")
+
+```
+
+Finaly, levels are defined so that month_year outputs are ordered correctly
+
+```{r Define monthly levels, echo=TRUE, include=TRUE}
+
+# Add levels to maintain order
+bike_data$year_month <- factor(bike_data$year_month, levels = c("Jan-11", "Feb-11", "Mar-11", "Apr-11", "May-11", "Jun-11", "Jul-11", "Aug-11", "Sep-11", "Oct-11", "Nov-11", "Dec-11",
+                                                              "Jan-12", "Feb-12", "Mar-12", "Apr-12", "May-12", "Jun-12", "Jul-12", "Aug-12", "Sep-12", "Oct-12", "Nov-12", "Dec-12"))
+
+```
+
+# **Plot Charts**
+
+```{r}
+
+# Load windows font calibra
+windowsFonts("Calibra" = windowsFont("Calibra"))
+
+# Create RC chart attributes
+rc_chartattributes1 <- theme_bw() +
+                        theme(text=element_text(family="Calibra")) +
+                        theme(panel.border = element_blank(),
+                          panel.grid.major = element_blank(),
+                          panel.grid.minor = element_blank(),
+                          axis.line = element_line(colour = "gray"),
+                          axis.ticks.x = element_blank(),
+                          axis.ticks.y = element_blank(),
+                          plot.title = element_text(color = "black", size = 36, face = "bold"),
+                          plot.subtitle = element_text(color = "gray45", size = 20),
+                          plot.caption = element_text(color = "gray45", size = 12, face = "italic", hjust = 0))
+
+```
+
+
+## Bar Charts
+
+```{r Bar chart total count by month, echo=TRUE, include=TRUE, fig.width=15, fig.height=10}
+
+# Define bar chart for total bike share users by month
+bar_chart_customer_count <- ggplot(data = bike_data) +
+                                geom_bar(aes(x = year_month, y = cnt), stat="identity", fill = "gold1") + 
+                                labs(title = "Bike rentals by month", 
+                                      subtitle = "Despite clear seasonality, bike share customers appear to have increased in number in 2012 compared to \n 2011, with a peak of c.220k users in September 2012", 
+                                      caption = "Data Source: Stern MSBA, Data Visualisation, Data Visualisation in R, bikesharedailydata.csv",
+                                      x = "Date", 
+                                      y = "Total bike rentals") + 
+                                scale_y_continuous(labels = comma) +
+                                rc_chartattributes1
+               
+bar_chart_customer_count
+
+```
+
+
+```{r Bar chart total count by season, echo=TRUE, include=TRUE, fig.width=15, fig.height=10}
+
+# Set levels
+bike_data$weekday <- factor(bike_data$weekday, levels = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"))
+
+# Define bar chart for total bike share users by month
+bar_chart_customer_count_weekday <- ggplot(data = bike_data) +
+                                geom_bar(aes(x = weekday, y = cnt), stat="identity", fill = "gold1") +
+                                labs(title = "Bike rentals by weekday", 
+                                      subtitle = "There appears to be minimal variation in total bike share count per weekday. \n Friday is marginally the most popular day", 
+                                      caption = "Data Source: Stern MSBA, Data Visualisation, Data Visualisation in R, bikesharedailydata.csv",
+                                      x = "Weekday", 
+                                      y = "Total bike rentals") + 
+                                scale_y_continuous(labels = comma) + 
+                                rc_chartattributes1
+               
+bar_chart_customer_count_weekday
+
+```
+
+```{r Gather data for customer type, echo=TRUE, include=TRUE}
+
+# Gather data so that segment type forms a customer_type column
+bike_data_gather <- gather(bike_data, customer_type, value, casual:registered)
+
+```
+
+
+```{r Bar chart total count by customer type, echo=TRUE, include=TRUE, fig.width=15, fig.height=10}
+
+# Define bar chart for total bike share users by month
+bar_chart_customer_type_count <- ggplot(data = bike_data_gather) +
+                                  geom_bar(aes(x = year_month, y = value, fill = customer_type), stat="identity") + 
+                                  labs(title = "Bike rentals by casual and registered users by month", 
+                                      subtitle = "Registered users make up the majority of bike share customers each month, though their \n mix appears to increase in the summer months", 
+                                      caption = "Data Source: Stern MSBA, Data Visualisation, Data Visualisation in R, bikesharedailydata.csv",
+                                      x = "Date", 
+                                      y = "Total bike rentals",
+                                      fill = "Customer type") + 
+                                  scale_y_continuous(labels = comma) +
+                                  scale_fill_manual(values = c("grey32", "turquoise")) +
+                                  rc_chartattributes1
+               
+bar_chart_customer_type_count
+
+```
+
+## Line Charts
+
+```{r Line chart weather, echo=TRUE, include=TRUE, message=FALSE, fig.width=15, fig.height=24}
+
+# Gather Data into long form
+bike_data_gather_weather <- gather(bike_data, weather, value, temp, hum, windspeed)
+
+# Facet chart of daily weather across temperature, humidity and windspeed
+line_chart_weather <- ggplot(data = bike_data_gather_weather) +
+                                geom_line(aes(x = dteday, y = value, color = weather), alpha = 0.4, size = 1) +
+                                geom_smooth(aes(x = dteday, y = value, color = weather), alpha = 0.1, size = 2) +
+                                labs(title = "Weather indicators by day", 
+                                      subtitle = "Humidity and windspeed don't appear to fluctuate much over time when smoothed.\n  Temperature clearly peaks in the summer months", 
+                                      caption = "Data Source: Stern MSBA, Data Visualisation, Data Visualisation in R, bikesharedailydata.csv",
+                                      x = "Date", 
+                                      y = "Value",
+                                      color = "Weather") +
+                                scale_color_manual(values = c("orange", "steelblue", "firebrick1")) +
+                                facet_grid(weather~.) +
+                                rc_chartattributes1
+
+line_chart_weather
+
+```
+
+## Stacked Area
+
+```{r Stacked area chart by customer type, echo=TRUE, include=TRUE, fig.width=15, fig.height=10}
+
+# Stacked area chart of daily customers by segment
+stacked_area_customer_type_count <- ggplot(data = bike_data_gather) +
+                                    geom_area(aes(x = dteday, y = value, fill = customer_type)) + 
+                                    labs(title = "Bike rentals by casual and registered users by day", 
+                                        subtitle = "Registered users make up the majority of bike share customers. At a total level there are clear \n large fluctuations in daily count", 
+                                        caption = "Data Source: Stern MSBA, Data Visualisation, Data Visualisation in R, bikesharedailydata.csv",
+                                        x = "Date", 
+                                        y = "Total bike rentals",
+                                        fill = "Customer Type") + 
+                                    scale_y_continuous(labels = comma) +
+                                    scale_fill_manual(values = c("grey32", "turquoise")) +
+                                    rc_chartattributes1
+               
+
+stacked_area_customer_type_count
+
+```
+
+## Histogram
+
+```{r histogram of customer type, echo=TRUE, include=TRUE, fig.width=15, fig.height=10}
+
+histogram_customer_type <- ggplot(data = bike_data_gather) +
+                            geom_histogram(aes(x = value, color = customer_type, fill = customer_type), position = "identity", bins = 30, alpha = 0.4) +
+                            labs(title = "Bike rentals distribution by casual and registered users", 
+                                        subtitle = "Registered users have a much wider spread of daily customer count, with some days having 7,000 riders.\n  Casual is much more concentrated around 800 rider mark", 
+                                        caption = "Data Source: Stern MSBA, Data Visualisation, Data Visualisation in R, bikesharedailydata.csv",
+                                        x = "Number of rentals daily", 
+                                        y = "Count",
+                                        color = "Customer Type",
+                                        fill = "Customer Type") + 
+                            scale_color_manual(values = c("grey32", "turquoise")) +
+                            scale_fill_manual(values = c("grey32", "turquoise")) +
+                            scale_x_continuous(labels = comma) +
+                            rc_chartattributes1
+
+histogram_customer_type
+
+```
+
+## Density Plot
+
+```{r Density plot of customer type, echo=TRUE, include=TRUE, fig.width=15, fig.height=10}
+
+# Calculate mean of each group
+mean <- ddply(bike_data_gather, "customer_type", summarise, grp.mean=mean(value))
+
+# Densirt plot of two customer groups with mean line for each segment
+density_plot_customer_type <- ggplot(data = bike_data_gather) +
+                            geom_density(aes(x = value, color = customer_type, fill = customer_type), position = "identity", alpha = 0.4) +
+                            labs(title = "Bike rentals distribution by casual and registered users", 
+                                        subtitle = "Registered users make up the majority of bike rental customers.\n  Mean daily rentals for casual users is c.850, and c.3,600 for registered users ", 
+                                        caption = "Data Source: Stern MSBA, Data Visualisation, Data Visualisation in R, bikesharedailydata.csv",
+                                        x = "Number of customers daily", 
+                                        y = "Count",
+                                        color = "Customer Type",
+                                        fill = "Customer Type") + 
+                            scale_color_manual(values = c("grey32", "turquoise")) +
+                            scale_fill_manual(values = c("grey32", "turquoise")) +
+                            scale_x_continuous(labels = comma) +
+                            geom_vline(data=mean, aes(xintercept = grp.mean, color=customer_type), linetype="dashed") +
+                            rc_chartattributes1
+
+density_plot_customer_type
+
+```
+
+## Boxplot
+
+```{r Boxplot of daily customers, echo=TRUE, include=TRUE, fig.width=15, fig.height=20, message=FALSE, warning=FALSE}
+
+# Set levels
+bike_data_gather$weekday <- factor(bike_data_gather$weekday, levels = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"))
+
+
+# Total customer count boxplot
+boxplot_customer_count <- ggplot(data = bike_data, aes(x = weekday, y = cnt)) +
+                            geom_boxplot(alpha = 0) +
+                            geom_jitter(alpha = 0.5, color = "tomato") +
+                            labs(title = "Bike rentals by weekday: All riders", 
+                                        subtitle = "Average rentals is fairly equal across all weekdays", 
+                                        caption = "Data Source: Stern MSBA, Data Visualisation, Data Visualisation in R, bikesharedailydata.csv",
+                                        x = "Weekday", 
+                                        y = "Daily customer count") + 
+                            scale_y_continuous(labels = comma) +
+                            rc_chartattributes1
+
+# Registered customer count boxplot
+boxplot_customer_count_registered <- ggplot(data = bike_data, aes(x = weekday, y = registered)) +
+                            geom_boxplot(alpha = 0) +
+                            geom_jitter(alpha = 0.5, color = "turquoise") +
+                            labs(title = "Bike rentals by weekday: Registered riders", 
+                                        subtitle = "Registered customers use the bike rental service much more during the week, indicating \n the service as a transport mode for getting to work", 
+                                        caption = "Data Source: Stern MSBA, Data Visualisation, Data Visualisation in R, bikesharedailydata.csv",
+                                        x = "Weekday", 
+                                        y = "Daily customer count") + 
+                            scale_y_continuous(labels = comma) +
+                            rc_chartattributes1
+
+
+
+# Casual customers count boxplot
+boxplot_customer_count_casual <- ggplot(data = bike_data, aes(x = weekday, y = casual)) +
+                            geom_boxplot(alpha = 0) +
+                            geom_jitter(alpha = 0.5, color = "grey32") +
+                            labs(title = "Bike rentals by weekday: Casual riders", 
+                                        subtitle = "Casual customers use the bike rental service much more at the weekend", 
+                                        caption = "Data Source: Stern MSBA, Data Visualisation, Data Visualisation in R, bikesharedailydata.csv",
+                                        x = "Weekday", 
+                                        y = "Daily customer count") + 
+                            scale_y_continuous(labels = comma) +
+                            rc_chartattributes1
+
+
+plot_grid(boxplot_customer_count + coord_flip(), boxplot_customer_count_registered + coord_flip(), boxplot_customer_count_casual + coord_flip(), nrow = 3)
+
+
+```
+
+## Scatterplots
+
+```{r Scatterplots for temp correlations to count, echo=TRUE, include=TRUE, fig.width=15, fig.height=20, message = FALSE}
+
+# Scatterplot all riders daily count by temperature
+scatterplot_temp <- ggplot(data = bike_data) +
+                      geom_point(aes(x = temp, y = cnt), color = "steelblue", size = 2, alpha = 0.5) +
+                      geom_smooth(aes(x = temp, y = cnt), color = "steelblue", alpha = 0.1, size = 2) +
+                      labs(title = "Bike rentals and daily temperature", 
+                                        subtitle = "As temperature increases, so does number of customers indicating postive relationship", 
+                                        caption = "Data Source: Stern MSBA, Data Visualisation, Data Visualisation in R, bikesharedailydata.csv",
+                                        x = "Temp value", 
+                                        y = "Daily bike rentals") + 
+                      scale_y_continuous(labels = comma) +
+                      rc_chartattributes1
+
+# Scatterplot all riders daily count by humidity
+scatterplot_hum <- ggplot(data = bike_data) +
+                      geom_point(aes(x = hum, y = cnt), color = "orange", size = 2, alpha = 0.5) +
+                      geom_smooth(aes(x = hum, y = cnt), color = "orange", alpha = 0.1, size = 2) +
+                      labs(title = "Bike rentals and daily humidity", 
+                                        subtitle = "Once humidity reaches a value of 0.62, the number of daily riders appears to go into decline", 
+                                        caption = "Data Source: Stern MSBA, Data Visualisation, Data Visualisation in R, bikesharedailydata.csv",
+                                        x = "Humidity value", 
+                                        y = "Daily bike rentals") + 
+                      scale_y_continuous(labels = comma) +
+                      rc_chartattributes1
+
+# Scatterplot all riders daily count by windspeed
+scatterplot_windspeed <- ggplot(data = bike_data) +
+                      geom_point(aes(x = windspeed, y = cnt), color = "firebrick1", size = 2, alpha = 0.5) +
+                      geom_smooth(aes(x = windspeed, y = cnt), color = "firebrick1", alpha = 0.1, size = 2) +
+                      labs(title = "Bike rentals and daily windspeed", 
+                                        subtitle = "Windspeed appears to have a negative relationship; as speed increases number of daily users declines", 
+                                        caption = "Data Source: Stern MSBA, Data Visualisation, Data Visualisation in R, bikesharedailydata.csv",
+                                        x = "Windspeed value", 
+                                        y = "Daily bike rentals") + 
+                      scale_y_continuous(labels = comma) +
+                      rc_chartattributes1
+
+plot_grid(scatterplot_temp, scatterplot_hum, scatterplot_windspeed, nrow = 3)
+
+```
+
+# **Personal Template**
+
+Based on a dummy set of data, I have created a personal template, shown below for a simple stacked bar chart, comprising of the following elements that are part of the function rc_characteristics1
+
+* Fonts set to Calibra 
+* Chart title set to black, bold and size 22
+* Chart subtitle set to gray54 and size 12
+* Chart caption, used for displaying the chart source, in grey55 italic, size 10. Position has been adjusted to LHS of the chart
+* Bar colours set as grey32 and turquoise, both with alpha of 0.5 to show a level of transparency
+* Over ggplot theme of theme_bw utilised
+* Panel border, panel grid major and panel grid minor set to element_blank
+* axis line set to 'gray'
+* Y scale label set to comma
+
+```{r Personal Template, echo=TRUE, include=TRUE, warning=FALSE, message=FALSE}
+
+# Load template csv file
+template_data <- read_csv("template_data.csv", col_names = TRUE)
+
+# View data
+template_data
+
+# Set levels
+template_data$Period <- factor(template_data$Period, levels = c("Period 1", "Period 2", "Period 3", "Period 4", "Period 5", "Period 6", "Period 7", "Period 8", "Period 9", "Period 10"))
+
+```
+
+```{r Create personal template based on above data, echo=TRUE, include=TRUE, fig.width=15, fig.height=10}
+
+# Define bar chart for total bike share users by month
+bar_chart_template <- ggplot(data = template_data) +
+                                  geom_bar(aes(x = Period, y = Count, fill = Class), stat="identity", alpha = 0.5) + 
+                                  labs(title = "Chart title here", 
+                                      subtitle = "Chart insights here", 
+                                      caption = "Chart source here",
+                                      x = "X label", 
+                                      y = "Y label",
+                                      fill = "Legend") + 
+                                  scale_y_continuous(labels = comma) +
+                                  scale_fill_manual(values = c("grey32", "turquoise")) +
+                                  rc_chartattributes1
+               
+bar_chart_template
+
+```
+
+
+Alternatively, a second personal template using different fonts and maintaining grid lines is:
+
+* Fonts set to Verdana Bold 
+* Chart title set to black, bold and size 36
+* Chart subtitle set to gray54 and size 20
+* Chart caption, used for displaying the chart source, in grey55 italic, size 12. Position has been adjusted to LHS of the chart
+* Bar colours set as grey32 and turquoise, both with alpha of 0.5 to show a level of transparency
+* Over ggplot theme of theme_light
+* Y scale label set to comma
+
+
+```{r r Create personal template based on above data, echo=TRUE, include=TRUE, fig.width=15, fig.height=10}
+
+# Register fonts for Windows bitmap output
+windowsFonts("verdana bold" = windowsFont("verdana bold"))
+
+
+# Create RC chart attributes
+rc_chartattributes2 <- theme_light() +
+                        theme(text=element_text(family="verdana bold")) +
+                        theme(plot.title = element_text(color = "black", size = 36, face = "bold"),
+                          plot.subtitle = element_text(color = "gray45", size = 20),
+                          plot.caption = element_text(color = "gray45", size = 12, face = "italic", hjust = 0))
+
+
+# Define bar chart for total bike share users by month
+bar_chart_template2 <- ggplot(data = template_data) +
+                                  geom_bar(aes(x = Period, y = Count, fill = Class), stat="identity", alpha = 0.5) + 
+                                  labs(title = "Chart title here", 
+                                      subtitle = "Chart insights here", 
+                                      caption = "Chart source here",
+                                      x = "X label", 
+                                      y = "Y label",
+                                      fill = "Legend") + 
+                                  scale_y_continuous(labels = comma) +
+                                  scale_fill_manual(values = c("grey32", "turquoise")) +
+                                  rc_chartattributes2
+               
+bar_chart_template2
+
+
+```
+
+Alternatively, a third personal template using different fonts and adding background colour is:
+
+* Fonts set to Verdana
+* Chart title set to black, bold and size 36
+* Chart subtitle set to black and size 20
+* Chart caption, used for displaying the chart source, in black italic, size 12. Position has been adjusted to LHS of the chart
+* Bar colours set as violetred4 and dodgerblue4, both with alpha of 0.5 to show a level of transparency
+* Over ggplot theme of theme_bw
+* Panel backgroudn set to fill of #BFD5E3 and colour #6D9EC1 with size and and linetype solid
+* Bar colour outline set to white 
+* Y scale label set to comma
+
+
+```{r r Create third personal template based on above data, echo=TRUE, include=TRUE, fig.width=15, fig.height=10}
+
+# Register fonts for Windows bitmap output
+windowsFonts("verdana" = windowsFont("verdana"))
+
+
+# Create RC chart attributes
+rc_chartattributes3 <- theme(text=element_text(family="verdana")) +
+                        theme(panel.background = element_rect(fill = "#BFD5E3", colour = "#6D9EC1", size = 2, linetype = "solid"),
+                              panel.grid.major = element_blank(),
+                              panel.grid.minor = element_blank(),
+                              axis.ticks.x = element_blank(),
+                              axis.ticks.y = element_blank(),
+                              plot.title = element_text(color = "black", size = 36, face = "bold", hjust = 0),
+                              plot.subtitle = element_text(color = "black", size = 20),
+                              plot.caption = element_text(color = "black", size = 12, face = "italic", hjust = 0))
+
+
+# Define bar chart for total bike share users by month
+bar_chart_template3 <- ggplot(data = template_data) +
+                                  geom_bar(aes(x = Period, y = Count, fill = Class), colour = "white", stat="identity", alpha = 0.75) + 
+                                  labs(title = "Chart title here", 
+                                      subtitle = "Chart insights here", 
+                                      caption = "Chart source here",
+                                      x = "X label", 
+                                      y = "Y label",
+                                      fill = "Legend") + 
+                                  scale_y_continuous(labels = comma) +
+                                  scale_fill_manual(values = c("dodgerblue4", "violetred4")) +
+                                  rc_chartattributes3
+               
+bar_chart_template3
+
+
+```
+
+
+
